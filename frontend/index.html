@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Polymarket Edge Scanner</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">◈</span>
+      <div>
+        <h1>Polymarket Edge Scanner</h1>
+        <p class="subtitle">Research &amp; paper trading — <strong>no real-money trades</strong></p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <span id="paper-badge" class="badge badge-paper">PAPER MODE</span>
+      <span id="last-scan" class="muted">last scan: —</span>
+      <button id="scan-btn" class="btn btn-primary">⟳ Scan now</button>
+    </div>
+  </header>
+
+  <section class="cards" id="overview-cards"><!-- filled by JS --></section>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="opportunities">Opportunities</button>
+    <button class="tab" data-tab="trades">Paper Trades</button>
+    <button class="tab" data-tab="metrics">Metrics</button>
+    <button class="tab" data-tab="arbitrage">Arbitrage</button>
+    <button class="tab" data-tab="settings">Settings</button>
+  </nav>
+
+  <main>
+    <!-- Opportunities -->
+    <section class="panel active" id="tab-opportunities">
+      <div class="panel-controls">
+        <label>Category
+          <select id="opp-category"><option value="">All</option></select>
+        </label>
+        <label>Sort
+          <select id="opp-sort">
+            <option value="edge">Edge</option>
+            <option value="confidence">Confidence</option>
+            <option value="liquidity">Liquidity</option>
+            <option value="volume">24h Volume</option>
+          </select>
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" id="opp-actionable" /> Actionable only
+        </label>
+      </div>
+      <div class="table-wrap">
+        <table id="opp-table">
+          <thead><tr>
+            <th>Market</th><th>Category</th><th>Outcome</th><th>Best ask</th>
+            <th>Fair P</th><th>Edge</th><th>Spread</th><th>Liquidity</th>
+            <th>Conf.</th><th>Action</th><th>Reason</th>
+          </tr></thead>
+          <tbody><tr><td colspan="11" class="muted center">No data yet — run a scan.</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Paper Trades -->
+    <section class="panel" id="tab-trades">
+      <div class="panel-controls">
+        <label>Status
+          <select id="trade-status">
+            <option value="">All</option>
+            <option value="OPEN">Open</option>
+            <option value="RESOLVED_WIN">Resolved win</option>
+            <option value="RESOLVED_LOSS">Resolved loss</option>
+            <option value="CLOSED">Closed</option>
+            <option value="CANCELLED">Cancelled</option>
+          </select>
+        </label>
+      </div>
+      <div class="table-wrap">
+        <table id="trade-table">
+          <thead><tr>
+            <th>Entry date</th><th>Market</th><th>Side</th><th>Entry</th>
+            <th>Size</th><th>Cur. value</th><th>Status</th><th>PnL</th>
+            <th>Reason</th><th></th>
+          </tr></thead>
+          <tbody><tr><td colspan="10" class="muted center">No paper trades yet.</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Metrics -->
+    <section class="panel" id="tab-metrics">
+      <div class="metrics-grid" id="eval-summary"></div>
+      <div class="metrics-cols">
+        <div>
+          <h3>Calibration by probability bucket</h3>
+          <div class="table-wrap"><table id="calib-table">
+            <thead><tr><th>Bucket</th><th>Predicted</th><th>Actual win</th><th>N</th></tr></thead>
+            <tbody></tbody></table></div>
+        </div>
+        <div>
+          <h3>Profit by category</h3>
+          <div class="table-wrap"><table id="cat-table">
+            <thead><tr><th>Category</th><th>Realized PnL</th><th>Trades</th></tr></thead>
+            <tbody></tbody></table></div>
+          <h3>Profit by confidence</h3>
+          <div class="table-wrap"><table id="conf-table">
+            <thead><tr><th>Level</th><th>Realized PnL</th><th>Trades</th><th>Win rate</th></tr></thead>
+            <tbody></tbody></table></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Arbitrage -->
+    <section class="panel" id="tab-arbitrage">
+      <div class="panel-controls">
+        <button id="arb-scan-btn" class="btn btn-primary">⟳ Scan order books</button>
+        <label class="checkbox"><input type="checkbox" id="arb-only" /> Arbitrage only</label>
+        <span class="muted">Checks both outcome books for <code>ask_yes + ask_no &lt; 1</code>. On-demand (2 CLOB calls/market). Rare &amp; liquidity-bound by design.</span>
+      </div>
+      <div class="table-wrap">
+        <table id="arb-table">
+          <thead><tr>
+            <th>Market</th><th>Category</th><th>Ask YES</th><th>Ask NO</th>
+            <th>Cost</th><th>Overround</th><th>Arb edge</th><th>Exec. shares</th><th>Status</th>
+          </tr></thead>
+          <tbody><tr><td colspan="9" class="muted center">Click “Scan order books”.</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Settings -->
+    <section class="panel" id="tab-settings">
+      <form id="settings-form" class="settings-form">
+        <label class="checkbox"><input type="checkbox" name="paper_trading_enabled" /> Paper trading enabled</label>
+        <label>Bankroll ($) <input type="number" step="1" name="paper_bankroll" /></label>
+        <label>Min liquidity ($) <input type="number" step="100" name="min_liquidity" /></label>
+        <label>Min 24h volume ($) <input type="number" step="100" name="min_volume_24h" /></label>
+        <label>Max spread <input type="number" step="0.005" name="max_spread" /></label>
+        <label>Min edge to trade <input type="number" step="0.005" name="min_edge_to_trade" /></label>
+        <label>Safety margin <input type="number" step="0.005" name="safety_margin" /></label>
+        <label>Estimated fee <input type="number" step="0.001" name="estimated_fee" /></label>
+        <label>Max days to resolution <input type="number" step="1" name="max_days_to_resolution" /></label>
+        <label class="checkbox"><input type="checkbox" name="allow_extreme_prices" /> Allow extreme prices (near 0/1)</label>
+        <label>Categories to scan (comma-sep, blank=all)
+          <input type="text" name="categories_filter" placeholder="Crypto, Politics, Sports" />
+        </label>
+        <div class="settings-actions">
+          <button type="submit" class="btn btn-primary">Save settings</button>
+          <span id="settings-status" class="muted"></span>
+        </div>
+      </form>
+      <p class="disclaimer">
+        This tool simulates trades only. It does not place live orders, bypass any
+        platform restriction, or guarantee profit. For research and education.
+      </p>
+    </section>
+  </main>
+
+  <!-- Market detail modal -->
+  <div id="detail-modal" class="modal hidden">
+    <div class="modal-card">
+      <button class="modal-close" id="modal-close">×</button>
+      <div id="detail-content"><p class="muted">Loading…</p></div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

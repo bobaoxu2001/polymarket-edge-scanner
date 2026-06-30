@@ -1,0 +1,15 @@
+# --- Core runtime (required to run the app) ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+SQLAlchemy==2.0.36
+httpx==0.28.1
+APScheduler==3.11.0
+python-dotenv==1.0.1
+
+# --- Optional: research / notebooks (not imported at runtime) ---
+pandas==2.2.3
+
+# --- Dev / testing ---
+pytest==8.3.4
