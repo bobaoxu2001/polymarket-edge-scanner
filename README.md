@@ -1,16 +1,47 @@
 # Polymarket Edge Scanner
 
-A local, transparent **research and paper-trading** system for [Polymarket](https://polymarket.com).
-It scans active markets, estimates a *fair* probability, compares it against the
-tradable price, computes an **edge after fees, slippage, and a safety margin**,
-ranks the opportunities, and records **simulated (paper) trades** so you can
-evaluate the approach over time — win rate, ROI, Brier score, and calibration.
+> **A research-only prediction-market edge scanner that tests whether external
+> probability models can identify mispriced Polymarket markets.**
 
-> **This is not a money-making guarantee and it does not place real trades.**
-> It is a tool for studying market efficiency and disciplined, auditable
-> decision-making.
+![paper mode](https://img.shields.io/badge/mode-PAPER%20ONLY-3fb950)
+![python](https://img.shields.io/badge/python-3.11%2B-4f8cff)
+![backend](https://img.shields.io/badge/backend-FastAPI-009688)
+![tests](https://img.shields.io/badge/tests-35%20passing-3fb950)
+![license](https://img.shields.io/badge/use-research%20%2F%20educational-d29922)
 
-![paper mode](https://img.shields.io/badge/mode-PAPER%20ONLY-3fb950) ![python](https://img.shields.io/badge/python-3.11%2B-4f8cff)
+It scans active Polymarket markets, estimates a *fair* probability, compares it
+against the tradable price, computes an **edge after fees, slippage, and a safety
+margin**, ranks opportunities, and records **paper trades** — then measures, over
+win rate, ROI, Brier score, and calibration, whether the signal was actually real.
+
+> ⚠️ **Paper trading only.** No real orders. No wallet or private keys. No profit
+> guarantee. Public read-only APIs exclusively.
+
+![Dashboard overview](docs/screenshots/dashboard-overview.png)
+
+---
+
+## Why this matters
+
+Prediction markets are a remarkably good probability machine — the live price of a
+YES share is the crowd's consensus probability of an event. That makes **the
+market price the baseline you have to beat**, not a number to ignore.
+
+- **The price is the prior.** A serious tool starts from the market-implied
+  probability, not from a hunch. This project bakes that in as a
+  `MarketAsPriorModel`.
+- **Edge is rare and expensive to capture.** A genuine opportunity only exists
+  when your *fair* probability exceeds the *tradable* price by more than the sum
+  of **fee + slippage + a safety margin**. Most apparent "edges" evaporate once
+  you subtract those frictions.
+- **Signals must be validated, not trusted.** Believing a model is easy; proving
+  it is hard. **Paper trading** records every signal as a simulated position and
+  scores it after resolution (win rate, realized return, **Brier score**,
+  calibration) — so you can tell a real edge from noise without risking a cent.
+- **Honest by construction.** With no external signal configured, fair ≈ market
+  and the scanner reports **~0 edge**. That is the correct answer for an efficient
+  market, and it is exactly what the academic literature finds for Polymarket
+  (see [References](#references-repos--papers-surveyed)).
 
 ---
 
@@ -56,7 +87,58 @@ this software. **Nothing here constitutes a recommendation to trade.**
 
 ---
 
+## Key technical highlights
+
+- **FastAPI backend** with a background **APScheduler** scan loop and an
+  auto-generated OpenAPI/Swagger UI at `/docs`.
+- **SQLite persistence** via SQLAlchemy 2.0 typed ORM (markets, opportunities,
+  paper trades, runtime settings).
+- **Polymarket Gamma + CLOB integration** through a defensive, read-only client
+  (rate limiter, TTL cache, on-disk raw cache, bounded retries).
+- **Market microstructure analysis** — order-book depth, spread, liquidity,
+  24h volume, and top-of-book imbalance.
+- **`MarketAsPriorModel`** — market price as the prior, blended with bounded,
+  fully-transparent external / microstructure / news signals.
+- **Friction-aware edge** — `fee + slippage + safety_margin` subtracted before
+  any signal is considered actionable.
+- **Paper-trading ledger** — cash, equity, and PnL are *derived* from the trade
+  ledger, so the books are consistent by construction.
+- **Strict risk manager** — per-trade / per-market / per-category exposure caps,
+  edge-tiered position sizing, no-negative-cash and duplicate guards.
+- **Model-free arbitrage detector** — checks both outcome books for
+  `ask_yes + ask_no < 1` (rebalancing/bundle arbitrage).
+- **Evaluation & calibration** — win rate, ROI, average realized return,
+  **Brier score**, and probability-bucket calibration.
+- **Tested** — 35 unit tests across edge math, risk caps, paper-trade
+  accounting, arbitrage, and duplicate-safe collection.
+
+---
+
 ## Architecture
+
+```mermaid
+flowchart LR
+    subgraph PM["Polymarket public APIs"]
+        GAMMA["Gamma API<br/>(markets · prices · liquidity)"]
+        CLOB["CLOB API<br/>(order books · quotes)"]
+    end
+
+    GAMMA --> COLL["Market Collector<br/>normalize · categorize · filter"]
+    CLOB --> OB["Orderbook Collector<br/>depth · spread · imbalance"]
+
+    COLL --> FAIR["Fair Probability Model<br/>(MarketAsPrior)"]
+    OB --> FAIR
+    FAIR --> EDGE["Edge Calculator<br/>fee · slippage · safety margin"]
+    EDGE --> RISK["Risk Manager<br/>exposure caps · sizing"]
+    RISK --> PAPER["Paper Trader<br/>open · resolve · PnL"]
+
+    COLL --> DB[("SQLite")]
+    EDGE --> DB
+    PAPER --> DB
+
+    DB --> API["FastAPI<br/>REST + scheduler"]
+    API --> DASH["Dashboard<br/>overview · opportunities · arbitrage"]
+```
 
 ```
 polymarket-edge-scanner/
@@ -130,34 +212,42 @@ pytest -q
 
 ## Screenshots
 
-> This project ships **without committed screenshots**. The dashboard renders from
-> live Polymarket data, so the most accurate "screenshot" is your own run — and
-> automated headless capture was intentionally not bundled (it requires extra
-> browser tooling and, on macOS, screen/file-access permissions the project
-> shouldn't assume). Capturing one takes ~30 seconds:
+All screenshots are of the real dashboard running against **live Polymarket data**
+(the paper trade shown comes from a synthetic external signal used for the demo).
 
-1. Start the app and seed data:
-   ```bash
-   ./run.sh                                   # then, in another shell:
-   curl -X POST http://127.0.0.1:8000/api/scan
-   ```
-2. Open **http://127.0.0.1:8000** and capture:
-   - **macOS:** `Cmd + Shift + 4` (drag a region) or `Cmd + Shift + 5` (window).
-   - **Windows:** `Win + Shift + S` (Snip & Sketch).
-   - **Linux:** `gnome-screenshot -a` / Spectacle / Flameshot.
-3. Suggested shots: Overview cards + Opportunities table, a Market-detail modal
-   (model breakdown + order book), the Paper Trades tab, and the Arbitrage tab.
-4. To include them in this repo, drop the images in `docs/screenshots/` and
-   reference them here, e.g. `![Dashboard](docs/screenshots/dashboard.png)`.
+**Opportunities** — every market ranked by friction-adjusted edge; one actionable
+`BUY YES` signal at the top, the rest `WATCH` (honest, efficient market).
 
-**Optional — scripted PNG via headless Chrome** (no extra Python deps):
+![Opportunities table](docs/screenshots/opportunities-table.png)
+
+**Market detail** — the full, auditable model breakdown (implied → calibrated →
+external → micro → news → fair) plus the live order book and risk notes.
+
+![Market detail modal](docs/screenshots/market-detail.png)
+
+**Paper trades** — the simulated ledger, marked to market with PnL and reasoning.
+
+![Paper trades](docs/screenshots/paper-trades.png)
+
+**Arbitrage** — both outcome books checked for `ask_yes + ask_no < 1`. Here every
+market shows a positive *overround* (cost > $1) → **no arbitrage**, a textbook
+demonstration of Polymarket's microstructural efficiency.
+
+![Arbitrage tab](docs/screenshots/arbitrage-tab.png)
+
+<details>
+<summary>Regenerate these screenshots</summary>
+
+They were captured from the live app via headless Chrome (DevTools Protocol). To
+refresh them, run the app (`./run.sh`), trigger a scan, then re-capture into
+`docs/screenshots/`. A simple single-shot example:
 
 ```bash
-# requires Google Chrome installed
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-  --headless --disable-gpu --window-size=1440,1000 \
-  --screenshot=docs/screenshots/dashboard.png http://127.0.0.1:8000
+  --headless=new --disable-gpu --hide-scrollbars --window-size=1440,1000 \
+  --screenshot=docs/screenshots/dashboard-overview.png http://127.0.0.1:8000
 ```
+</details>
 
 ---
 
