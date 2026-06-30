@@ -96,7 +96,12 @@ def run_scan(session: Session) -> ScanResult:
         cash = account.cash
         exposures = _open_exposures(session)
 
+        scored: set[str] = set()
         for market in qualifying:
+            # Defense in depth: never write two opportunity rows for one market.
+            if market.id in scored:
+                continue
+            scored.add(market.id)
             view = build_market_view(market)  # momentum-only (no per-market book)
             fair = model.fair_probability(view)
             mid = view.mid_yes

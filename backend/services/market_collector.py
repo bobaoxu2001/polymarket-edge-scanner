@@ -185,7 +185,8 @@ def quality_filter(fields: dict[str, Any], eff: EffectiveSettings) -> tuple[bool
 
     end = fields.get("end_date")
     if end is not None:
-        days = (end - datetime.utcnow()).total_seconds() / 86400.0
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        days = (end - now).total_seconds() / 86400.0
         if days > eff.max_days_to_resolution and fields["liquidity"] < eff.strong_liquidity_override:
             return False, f"resolves in {days:.0f}d (> {eff.max_days_to_resolution}d) w/o strong liquidity"
 
@@ -221,16 +222,23 @@ def collect_markets(
     """
     raw_markets = client.fetch_active_markets(min_liquidity=eff.min_liquidity)
     qualifying: list[Market] = []
+    seen: set[str] = set()
     for raw in raw_markets:
         parsed = parse_market(raw)
         if parsed is None:
             continue
+        # Gamma pagination can return the same market on more than one page;
+        # dedupe by id so we never upsert/score a market twice in one cycle.
+        mid = parsed.fields["id"]
+        if mid in seen:
+            continue
+        seen.add(mid)
         m = upsert_market(session, parsed.fields)
         passed, _ = quality_filter(parsed.fields, eff)
         if passed:
             qualifying.append(m)
     session.flush()
-    return qualifying, len(raw_markets)
+    return qualifying, len(seen)
 
 
 def refresh_market_by_id(
